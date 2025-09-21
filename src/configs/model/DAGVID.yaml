@@ -1,0 +1,38 @@
+embedding_size: 64
+n_ui_layers: 3
+n_layers: 2
+
+learning_rate_scheduler: [0.96, 50]
+lambda_coeff: 0.9
+reg_weight: 0.1
+tau: 0.2
+knn_k: 10
+
+learning_rate: 0.001
+
+# baby
+cl_loss: [0.001]
+cl_loss2: [0.01]
+cl_loss3: [0.002]
+uni_loss: [0.1]
+vib_alpha: [0.08]
+mi_loss: [0.01]
+
+# sports
+#cl_loss: [0.01]
+#cl_loss2: [0.01]
+#cl_loss3: [0.04]
+#uni_loss: [0.1]
+#vib_alpha: [0.001]
+#mi_loss: [0.0001]
+
+#clothing
+#cl_loss: [0.01]
+#cl_loss2: [0.001]
+#cl_loss3: [0.01]
+#uni_loss: [0.0001]
+#vib_alpha: [0.002]
+#mi_loss: [0.01]
+
+hyper_parameters: ["cl_loss","cl_loss2","cl_loss3","uni_loss","vib_alpha","mi_loss"]
+
