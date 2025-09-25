@@ -355,7 +355,7 @@ class DAGVID(GeneralRecommender):
         else:
             text_feats = text_mu = text_logvar = None
 
-        # Behavior-Guided Purifier
+        # Initial filtering noise (with ID embeddings)
         image_item_embeds = torch.multiply(self.item_id_embedding.weight, self.v_filter(image_feats))
         text_item_embeds = torch.multiply(self.item_id_embedding.weight, self.t_filter(text_feats))
 
@@ -382,7 +382,7 @@ class DAGVID(GeneralRecommender):
 
         augmented_it_embeds = (augmented_image_embeds + augmented_text_embeds) / 2
 
-        # Attention Fuser
+        # Attention Fusion
         att_common = torch.cat([self.attention(core_image_embeds), self.attention(core_text_embeds)], dim=-1)
         weight_common = self.softmax(att_common)
         common_embeds = weight_common[:, 0].unsqueeze(dim=1) * core_image_embeds + weight_common[:, 1].unsqueeze(
