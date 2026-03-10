@@ -45,7 +45,7 @@ max_position_embeddings=512
 layer_norm_eps=1e-12
 hidden_dropout_prob=0.1
 end2end=False
-hyper_parameters=['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'vt_loss', 'seed']
+hyper_parameters=['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'seed']
 inter_file_name=baby.inter
 vision_feature_file=image_feat.npy
 text_feature_file=text_feat.npy
@@ -58,17 +58,16 @@ tau=0.2
 knn_k=10
 align_loss=[0.001]
 inter_loss=[0.01]
-exp_loss=[0.002]
+exp_loss=[0.02]
 cal_loss=[0.1]
-re_loss=[0.08]
-vt_loss=[0.01]
+re_loss=[0.01]
 model=DAGVID
 dataset=baby
 valid_metric_bigger=True
 device=cuda
 
 
-/home/sjz/czd/multimodal idea-paper/data/baby
+/multimodal idea-paper/data/baby
 baby.inter
 28 Jul 21:52    INFO baby
 The number of users: 19445
@@ -109,7 +108,7 @@ The sparsity of the dataset: 99.97990552482683%
 =================================
 
 
-28 Jul 21:52    INFO =========1/1: Parameters:['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'vt_loss', 'seed']=(0.001, 0.01, 0.002, 0.1, 0.08, 0.01, 999)=======
+28 Jul 21:52    INFO =========1/1: Parameters:['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'seed']=(0.001, 0.01, 0.02, 0.1, 0.01, 999)=======
 28 Jul 21:53    INFO IDEA(
   (user_embedding): Embedding(19445, 64)
   (item_id_embedding): Embedding(7050, 64)
@@ -504,7 +503,7 @@ recall@5: 0.0430    recall@10: 0.0697    recall@20: 0.1065    recall@50: 0.1748 
 28 Jul 22:01    INFO valid result: 
 recall@5: 0.0405    recall@10: 0.0649    recall@20: 0.1019    recall@50: 0.1682    ndcg@5: 0.0275    ndcg@10: 0.0354    ndcg@20: 0.0449    ndcg@50: 0.0581    precision@5: 0.0085    precision@10: 0.0068    precision@20: 0.0054    precision@50: 0.0036    map@5: 0.0229    map@10: 0.0261    map@20: 0.0286    map@50: 0.0307    
 28 Jul 22:01    INFO test result: 
-recall@5: 0.0433    recall@10: 0.0699    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0376    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316    
+recall@5: 0.0433    recall@10: 0.0700    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0377    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316    
 28 Jul 22:01    INFO ██ IDEA--Best validation results updated!!!
 28 Jul 22:01    INFO epoch 56 training [time: 2.32s, train loss: 25.8162]
 28 Jul 22:01    INFO epoch 56 evaluating [time: 3.07s, valid_score: 0.101600]
@@ -636,20 +635,20 @@ recall@5: 0.0441    recall@10: 0.0690    recall@20: 0.1050    recall@50: 0.1713 
 28 Jul 22:04    INFO best valid result: recall@5: 0.0405    recall@10: 0.0649    recall@20: 0.1019    recall@50: 0.1682    ndcg@5: 0.0275    ndcg@10: 0.0354    ndcg@20: 0.0449    ndcg@50: 0.0581    precision@5: 0.0085    precision@10: 0.0068    precision@20: 0.0054    precision@50: 0.0036    map@5: 0.0229    map@10: 0.0261    map@20: 0.0286    map@50: 0.0307    
 28 Jul 22:04    INFO test result: recall@5: 0.0433    recall@10: 0.0699    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0376    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316    
 28 Jul 22:04    INFO ████Current BEST████:
-Parameters: ['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'vt_loss', 'seed']=(0.001, 0.01, 0.002, 0.1, 0.08, 0.01, 999),
+Parameters: ['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'vt_loss', 'seed']=(0.001, 0.01, 0.02, 0.1, 0.01, 999),
 Valid: recall@5: 0.0405    recall@10: 0.0649    recall@20: 0.1019    recall@50: 0.1682    ndcg@5: 0.0275    ndcg@10: 0.0354    ndcg@20: 0.0449    ndcg@50: 0.0581    precision@5: 0.0085    precision@10: 0.0068    precision@20: 0.0054    precision@50: 0.0036    map@5: 0.0229    map@10: 0.0261    map@20: 0.0286    map@50: 0.0307    ,
-Test: recall@5: 0.0433    recall@10: 0.0699    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0376    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316    
+Test: recall@5: 0.0433    recall@10: 0.0700    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0377    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316    
 
 
 
 28 Jul 22:04    INFO 
 ============All Over=====================  
-28 Jul 22:04    INFO Parameters: ['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'vt_loss', 'seed']=(0.001, 0.01, 0.002, 0.1, 0.08, 0.01, 999),
+28 Jul 22:04    INFO Parameters: ['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'vt_loss', 'seed']=(0.001, 0.01, 0.02, 0.1, 0.01, 999),
  best valid: recall@5: 0.0405    recall@10: 0.0649    recall@20: 0.1019    recall@50: 0.1682    ndcg@5: 0.0275    ndcg@10: 0.0354    ndcg@20: 0.0449    ndcg@50: 0.0581    precision@5: 0.0085    precision@10: 0.0068    precision@20: 0.0054    precision@50: 0.0036    map@5: 0.0229    map@10: 0.0261    map@20: 0.0286    map@50: 0.0307    ,
- best test: recall@5: 0.0433    recall@10: 0.0699    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0376    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316     
+ best test: recall@5: 0.0433    recall@10: 0.0700    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0377    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316     
 28 Jul 22:04    INFO 
 
 █████████████ BEST ████████████████
 28 Jul 22:04    INFO 	Parameters: ['align_loss', 'inter_loss', 'exp_loss', 'cal_loss', 're_loss', 'vt_loss', 'seed']=(0.001, 0.01, 0.002, 0.1, 0.08, 0.01, 999),
 Valid: recall@5: 0.0405    recall@10: 0.0649    recall@20: 0.1019    recall@50: 0.1682    ndcg@5: 0.0275    ndcg@10: 0.0354    ndcg@20: 0.0449    ndcg@50: 0.0581    precision@5: 0.0085    precision@10: 0.0068    precision@20: 0.0054    precision@50: 0.0036    map@5: 0.0229    map@10: 0.0261    map@20: 0.0286    map@50: 0.0307    ,
-Test: recall@5: 0.0433    recall@10: 0.0699    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0376    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316 
+Test: recall@5: 0.0433    recall@10: 0.0700    recall@20: 0.1066    recall@50: 0.1754    ndcg@5: 0.0290    ndcg@10: 0.0377    ndcg@20: 0.0470    ndcg@50: 0.0609    precision@5: 0.0095    precision@10: 0.0077    precision@20: 0.0059    precision@50: 0.0039    map@5: 0.0235    map@10: 0.0269    map@20: 0.0294    map@50: 0.0316 
