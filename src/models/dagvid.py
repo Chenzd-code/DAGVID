@@ -20,19 +20,18 @@ class DAGVID(GeneralRecommender):
         super(DAGVID, self).__init__(config, dataset)
         self.sparse = True
         self.tau = config['tau']
-        self.inter_loss = config['inter_loss']
         self.align_loss = config['align_loss']
-        self.exp_loss = config['exp_loss']
-        self.cal_loss = config['cal_loss']
+        self.inter_loss2 = config['inter_loss2']
+        self.cl_loss3 = config['cl_loss3']
+        self.uni_loss = config['uni_loss']
         self.n_ui_layers = config['n_ui_layers']
         self.embedding_dim = config['embedding_size']
         self.knn_k = config['knn_k']
         self.n_layers = config['n_layers']
         self.reg_weight = config['reg_weight']
-        self.re_loss = config['re_loss']
-        self.vt_loss = config['vt_loss']
+        self.vib_alpha = config['vib_alpha']
 
-        # Load dataset information
+        # load dataset info
         self.interaction_matrix = dataset.inter_matrix(form='coo').astype(np.float32)
 
         self.user_embedding = nn.Embedding(self.n_users, self.embedding_dim)
@@ -53,10 +52,9 @@ class DAGVID(GeneralRecommender):
         user_image_adj_file = os.path.join(dataset_path, 'user_image_adj_{}_{}.pt'.format(self.knn_k, self.sparse))
         user_text_adj_file = os.path.join(dataset_path, 'user_text_adj_{}_{}.pt'.format(self.knn_k, self.sparse))
 
-        # Create linear layers for the VIB module
+
         if self.v_feat is not None:
             self.image_embedding = nn.Embedding.from_pretrained(self.v_feat, freeze=False)
-            # VIB linear layers for the image modality
             self.image_mu_encoder = nn.Linear(self.v_feat.shape[1], self.embedding_dim)
             self.image_logvar_encoder = nn.Linear(self.v_feat.shape[1], self.embedding_dim)
             nn.init.xavier_uniform_(self.image_mu_encoder.weight)
@@ -75,7 +73,6 @@ class DAGVID(GeneralRecommender):
 
         if self.t_feat is not None:
             self.text_embedding = nn.Embedding.from_pretrained(self.t_feat, freeze=False)
-            # VIB linear layers for the text modality
             self.text_mu_encoder = nn.Linear(self.t_feat.shape[1], self.embedding_dim)
             self.text_logvar_encoder = nn.Linear(self.t_feat.shape[1], self.embedding_dim)
             nn.init.xavier_uniform_(self.text_mu_encoder.weight)
@@ -91,14 +88,14 @@ class DAGVID(GeneralRecommender):
                 torch.save(text_adj, text_adj_file)
             self.text_original_adj = text_adj.cuda()
 
+        
         # user-image
         if os.path.exists(user_image_adj_file):
             self.user_image_adj = torch.load(user_image_adj_file)
         else:
-            # First obtain the initial relation matrix for the first aggregation to build user modality similarity
             self.norm_adj = self.get_adj_mat1()
             self.R = self.sparse_mx_to_torch_sparse_tensor(self.R).float().to(self.device)
-            # Start constructing
+            # start constructing
             image_item_embeds = torch.mm(self.image_original_adj, self.image_embedding.weight.detach())
             image_user_embeds = torch.sparse.mm(self.R, image_item_embeds)
             user_image_adj = build_sim(image_user_embeds.detach())
@@ -111,6 +108,8 @@ class DAGVID(GeneralRecommender):
         if os.path.exists(user_text_adj_file):
             self.user_text_adj = torch.load(user_text_adj_file)
         else:
+            self.norm_adj = self.get_adj_mat1()
+            self.R = self.sparse_mx_to_torch_sparse_tensor(self.R).float().to(self.device)
             text_item_embeds = torch.mm(self.text_original_adj, self.text_embedding.weight.detach())
             text_user_embeds = torch.sparse.mm(self.R, text_item_embeds)
             user_text_adj = build_sim(text_user_embeds.detach())
@@ -120,23 +119,28 @@ class DAGVID(GeneralRecommender):
                                                             norm_type='sym')
             torch.save(self.user_text_adj, user_text_adj_file)
 
-        self.user_inter = self.compute_adj_intersection(self.user_image_adj, self.user_text_adj, 'user')
-        self.uu_adj = self.construct_adj_from_intersection(self.user_inter, 'user')
-        self.inter = self.compute_adj_intersection(self.image_original_adj, self.text_original_adj, 'item')
-        self.ii_adj = self.construct_adj_from_intersection(self.inter, 'item')
-        # Component-1 IGA
+        self.user_inter = self.find_inter(self.user_image_adj, self.user_text_adj, 'user')
+        self.uu_adj = self.add_edge(self.user_inter, 'user')
+        self.inter = self.find_inter(self.image_original_adj, self.text_original_adj, 'item')
+        self.ii_adj = self.add_edge(self.inter, 'item')
+
         self.norm_adj = self.get_adj_mat(self.ii_adj.tolil(), self.uu_adj.tolil())
         self.R = self.sparse_mx_to_torch_sparse_tensor(self.R).float().to(self.device)
         self.norm_adj = self.sparse_mx_to_torch_sparse_tensor(self.norm_adj).float().to(self.device)
-
+        
+        # raw interaction matrix
+        # self.norm_adj = self.get_adj_mat1()
+        # self.R = self.sparse_mx_to_torch_sparse_tensor(self.R).float().to(self.device)
+        # self.norm_adj = self.sparse_mx_to_torch_sparse_tensor(self.norm_adj).float().to(self.device)
+        
         self.softmax = nn.Softmax(dim=-1)
 
-        self.v_filter = nn.Sequential(
+        self.gate_v = nn.Sequential(
             nn.Linear(self.embedding_dim, self.embedding_dim),
             nn.Sigmoid()
         )
 
-        self.t_filter = nn.Sequential(
+        self.gate_t = nn.Sequential(
             nn.Linear(self.embedding_dim, self.embedding_dim),
             nn.Sigmoid()
         )
@@ -147,7 +151,6 @@ class DAGVID(GeneralRecommender):
             nn.Linear(self.embedding_dim, 1, bias=False)
         )
 
-    # Forward propagation of the VIB module
     def _vib_forward(self, x, mu_encoder, logvar_encoder, training=True):
         mu = mu_encoder(x)
         logvar = logvar_encoder(x)
@@ -159,79 +162,56 @@ class DAGVID(GeneralRecommender):
         else:
             return mu, mu, logvar
 
-    # Calculate adjacency matrix intersections and return intersection dictionary
-    def compute_adj_intersection(self, image_adj, text_adj, name):
-        inter_file = os.path.join(self.dataset_path, f"{name}_inter.json")
-        # Load directly if file exists
+    def find_inter(self, image_adj, text_adj, name):
+        inter_file = os.path.join(self.dataset_path, name + '_inter.json')
         if os.path.exists(inter_file):
-            with open(inter_file, 'r', encoding='utf-8') as f:
-                adj_intersection = json.load(f)
-            return adj_intersection
-
-        # Initialize intersection dictionary and temporary storage lists
-        adj_intersection = defaultdict(list)
-        img_neighbors = []
-        txt_neighbors = []
-        adj_length = len(image_adj._indices()[0])
-
-        # Iterate through adjacency matrix indices
-        for i in range(adj_length):
-            # Get current node ID (ensure main nodes of image and text adjacency matrices are consistent)
-            current_id = image_adj._indices()[0][i].item()
-            assert current_id == text_adj._indices()[0][i].item(), "Image and text adjacency nodes mismatch"
-
-            # Collect image/text neighbor nodes of the current node
-            img_neighbors.append(image_adj._indices()[1][i].item())
-            txt_neighbors.append(text_adj._indices()[1][i].item())
-
-            # Calculate intersection after collecting 10 neighbor nodes each
-            if len(img_neighbors) == 10 and len(txt_neighbors) == 10:
-                # Find intersection of two neighborhoods, excluding self-node
-                common_neighbors = list(set(img_neighbors) & set(txt_neighbors))
-                common_neighbors = [node for node in common_neighbors if node != current_id]
-                adj_intersection[current_id] = common_neighbors
-
-                # Reset temporary lists
-                img_neighbors = []
-                txt_neighbors = []
-
-        # Save intersection results to file
-        with open(inter_file, 'w', encoding='utf-8') as f:
-            json.dump(adj_intersection, f)
-
-        return adj_intersection
-
-    # Construct adjacency matrix from intersection results
-    def construct_adj_from_intersection(self, adj_intersection, name):
-        # Collect row and column indices of the adjacency matrix
-        adj_rows = []
-        adj_cols = []
-
-        # Iterate through intersection dictionary to populate indices
-        for main_node, neighbor_nodes in adj_intersection.items():
-            if not neighbor_nodes:  # Skip if no neighbor nodes
-                continue
-            # Add an edge for each neighbor node (main_node → neighbor)
-            for neighbor in neighbor_nodes:
-                adj_rows.append(int(main_node))
-                adj_cols.append(neighbor)
-
-        # Construct adjacency matrix values (all 1s, indicating existing edges)
-        adj_values = torch.ones(len(adj_rows), dtype=torch.int).tolist()
-
-        # Determine adjacency matrix shape based on node type (user/item)
-        if name == 'item':
-            adj_shape = (self.n_items, self.n_items)
+            with open(inter_file) as f:
+                inter = json.load(f)
         else:
-            adj_shape = (self.n_users, self.n_users)
+            j = 0
+            inter = defaultdict(list)
+            img_sim = []
+            txt_sim = []
+            for i in range(0, len(image_adj._indices()[0])):
+                img_id = image_adj._indices()[0][i]
+                txt_id = text_adj._indices()[0][i]
+                assert img_id == txt_id
+                id = img_id.item()
+                img_sim.append(image_adj._indices()[1][j].item())
+                txt_sim.append(text_adj._indices()[1][j].item())
 
-        # Construct COO-format sparse adjacency matrix
-        intersection_adj = sp.coo_matrix(
-            (adj_values, (adj_rows, adj_cols)),
-            shape=adj_shape,
-            dtype=np.int32
-        )
-        return intersection_adj
+                if len(img_sim) == 10 and len(txt_sim) == 10:
+                    it_inter = list(set(img_sim) & set(txt_sim))
+                    inter[id] = [v for v in it_inter if v != id]
+                    img_sim = []
+                    txt_sim = []
+
+                j += 1
+
+            with open(inter_file, "w") as f:
+                json.dump(inter, f)
+
+        return inter
+
+    def add_edge(self, inter, name):
+        sim_rows = []
+        sim_cols = []
+        for id, vs in inter.items():
+            if len(vs) == 0:
+                continue
+            for v in vs:
+                sim_rows.append(int(id))
+                sim_cols.append(v)
+
+        sim_rows = torch.tensor(sim_rows)
+        sim_cols = torch.tensor(sim_cols)
+        sim_values = [1] * len(sim_rows)
+
+        if name == 'item':
+            item_adj = sp.coo_matrix((sim_values, (sim_rows, sim_cols)), shape=(self.n_items, self.n_items), dtype=int)
+        else:
+            item_adj = sp.coo_matrix((sim_values, (sim_rows, sim_cols)), shape=(self.n_users, self.n_users), dtype=int)
+        return item_adj
 
     def pre_epoch_processing(self):
         pass
@@ -303,38 +283,25 @@ class DAGVID(GeneralRecommender):
     def sq_sum(self, emb):
         return 1. / 2 * (emb ** 2).sum()
 
-    # User-item graph convolution (multi-layer aggregation + averaging)
-    def user_item_graph_convolution(self, adj, user_embeds, item_embeds):
-        # Concatenate initial embeddings of users and items
-        current_emb = torch.cat([user_embeds, item_embeds], dim=0)
-        # Store aggregation results of each layer
-        layer_embeddings = [current_emb]
+    def conv_ui(self, adj, user_embeds, item_embeds):
+        ego_embeddings = torch.cat([user_embeds, item_embeds], dim=0)
+        all_embeddings = [ego_embeddings]
 
-        # Multi-layer graph convolution aggregation
-        for _ in range(self.n_ui_layers):
-            # Sparse matrix multiplication for graph convolution
-            current_emb = torch.sparse.mm(adj, current_emb)
-            # Save current layer results
-            layer_embeddings.append(current_emb)
+        for i in range(self.n_ui_layers):
+            side_embeddings = torch.sparse.mm(adj, ego_embeddings)
+            ego_embeddings = side_embeddings
+            all_embeddings += [ego_embeddings]
+        all_embeddings = torch.stack(all_embeddings, dim=1)
+        all_embeddings = all_embeddings.mean(dim=1, keepdim=False)
 
-        # Average results from all layers
-        layer_embeddings = torch.stack(layer_embeddings, dim=1)
-        avg_embeddings = layer_embeddings.mean(dim=1, keepdim=False)
-        return avg_embeddings
+        return all_embeddings
 
-    # Item-item graph convolution (multi-layer aggregation, returns last layer)
-    def item_item_graph_convolution(self, ii_adj, modal_embeds):
-        # Initialize current embedding as input modal embedding
-        current_modal_emb = modal_embeds.clone()
-        # Multi-layer graph convolution aggregation
-        for _ in range(self.n_layers):
-            # Update embedding with sparse matrix multiplication
-            current_modal_emb = torch.sparse.mm(ii_adj, current_modal_emb)
-        # Return last layer aggregation result
-        return current_modal_emb
+    def conv_ii(self, ii_adj, single_modal):
+        for i in range(self.n_layers):
+            single_modal = torch.sparse.mm(ii_adj, single_modal)
+        return single_modal
 
     def forward(self, adj, train, v_embeds=None, t_embeds=None):
-        # Process image and text features using the fused VIB module
         if self.v_feat is not None:
             image_feats, image_mu, image_logvar = self._vib_forward(
                 self.image_embedding.weight,
@@ -355,49 +322,48 @@ class DAGVID(GeneralRecommender):
         else:
             text_feats = text_mu = text_logvar = None
 
-        # Initial filtering noise (with ID embeddings)
-        image_item_embeds = torch.multiply(self.item_id_embedding.weight, self.v_filter(image_feats))
-        text_item_embeds = torch.multiply(self.item_id_embedding.weight, self.t_filter(text_feats))
+        # Behavior-Guided Purifier
+        image_item_embeds = torch.multiply(self.item_id_embedding.weight, self.gate_v(image_feats))
+        text_item_embeds = torch.multiply(self.item_id_embedding.weight, self.gate_t(text_feats))
 
         # User-Item View
         item_embeds = self.item_id_embedding.weight
         user_embeds = self.user_embedding.weight
-        augmented_id_embeds = self.user_item_graph_convolution(adj, user_embeds, item_embeds)
+        # id
+        augmented_id_embeds = self.conv_ui(adj, user_embeds, item_embeds)
         content_embeds = augmented_id_embeds
 
-        # Image
-        core_image_item = self.item_item_graph_convolution(self.image_original_adj, image_item_embeds)
-        core_image_user = torch.sparse.mm(self.R, core_image_item)
-        core_image_embeds = torch.cat([core_image_user, core_image_item], dim=0)
+      
+        explicit_image_item = self.conv_ii(self.image_original_adj, image_item_embeds)
+        explicit_image_user = torch.sparse.mm(self.R, explicit_image_item)
+        explicit_image_embeds = torch.cat([explicit_image_user, explicit_image_item], dim=0)
 
-        augmented_image_embeds = self.user_item_graph_convolution(adj, self.augmented_image_user.weight,
-                                                                 core_image_item)
-        # Text
-        core_text_item = self.item_item_graph_convolution(self.text_original_adj, text_item_embeds)
-        core_text_user = torch.sparse.mm(self.R, core_text_item)
-        core_text_embeds = torch.cat([core_text_user, core_text_item], dim=0)
+        extended_image_embeds = self.conv_ui(adj, self.augmented_image_user.weight, explicit_image_item)
+    
+        explicit_text_item = self.conv_ii(self.text_original_adj, text_item_embeds)
+        explicit_text_user = torch.sparse.mm(self.R, explicit_text_item)
+        explicit_text_embeds = torch.cat([explicit_text_user, explicit_text_item], dim=0)
 
-        augmented_text_embeds = self.user_item_graph_convolution(adj, self.augmented_text_user.weight,
-                                                                core_text_item)
+        extended_text_embeds = self.conv_ui(adj, self.augmented_text_user.weight, explicit_text_item)
 
-        augmented_it_embeds = (augmented_image_embeds + augmented_text_embeds) / 2
+        extended_it_embeds = (extended_image_embeds + extended_text_embeds) / 2
 
-        # Attention Fusion
-        att_common = torch.cat([self.attention(core_image_embeds), self.attention(core_text_embeds)], dim=-1)
+        # Attention Fuser
+        att_common = torch.cat([self.attention(explicit_image_embeds), self.attention(explicit_text_embeds)], dim=-1)
         weight_common = self.softmax(att_common)
-        common_embeds = weight_common[:, 0].unsqueeze(dim=1) * core_image_embeds + weight_common[:, 1].unsqueeze(
-            dim=1) * core_text_embeds
+        common_embeds = weight_common[:, 0].unsqueeze(dim=1) * explicit_image_embeds + weight_common[:, 1].unsqueeze(
+            dim=1) * explicit_text_embeds
 
-        side_embeds = (core_image_embeds + core_text_embeds - common_embeds) / 3
+        side_embeds = (explicit_image_embeds + explicit_text_embeds - common_embeds) / 3
 
         all_embeds = content_embeds + side_embeds
 
         all_embeddings_users, all_embeddings_items = torch.split(all_embeds, [self.n_users, self.n_items], dim=0)
 
         if train:
-            return all_embeddings_users, all_embeddings_items, side_embeds, content_embeds, augmented_it_embeds, core_image_embeds, core_text_embeds, image_mu, image_logvar, text_mu, text_logvar, image_feats, text_feats
+            return all_embeddings_users, all_embeddings_items, side_embeds, content_embeds, extended_it_embeds, explicit_image_embeds, explicit_text_embeds, image_mu, image_logvar, text_mu, text_logvar, image_feats, text_feats
 
-        return all_embeddings_users, all_embeddings_items, core_image_embeds, core_text_embeds
+        return all_embeddings_users, all_embeddings_items, explicit_image_embeds, explicit_text_embeds
 
     def bpr_loss(self, users, pos_items, neg_items):
         pos_scores = torch.sum(torch.mul(users, pos_items), dim=1)
@@ -425,66 +391,56 @@ class DAGVID(GeneralRecommender):
         pos_items = interaction[1]
         neg_items = interaction[2]
 
-        ua_embeddings, ia_embeddings, side_embeds, content_embeds, augmented_it_embeds, core_image_embeds, core_text_embeds, image_mu, image_logvar, text_mu, text_logvar, image_feats, text_feats = self.forward(
+        ua_embeddings, ia_embeddings, side_embeds, content_embeds, extended_it_embeds, explicit_image_embeds, explicit_text_embeds, image_mu, image_logvar, text_mu, text_logvar, image_feats, text_feats = self.forward(
             self.norm_adj, True)
 
         u_g_embeddings = ua_embeddings[users]
         pos_i_g_embeddings = ia_embeddings[pos_items]
         neg_i_g_embeddings = ia_embeddings[neg_items]
 
-        augmented_it_user, augmented_it_items = torch.split(augmented_it_embeds, [self.n_users, self.n_items], dim=0)
+        extended_it_user, extended_it_items = torch.split(extended_it_embeds, [self.n_users, self.n_items], dim=0)
 
         bpr_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings, neg_i_g_embeddings)
 
         side_embeds_users, side_embeds_items = torch.split(side_embeds, [self.n_users, self.n_items], dim=0)
         content_embeds_user, content_embeds_items = torch.split(content_embeds, [self.n_users, self.n_items], dim=0)
 
-        # component-2  - RMAR
-        # - EXP
-        exp_loss = self.InfoNCE(augmented_it_user[users], side_embeds_users[users], self.tau)
-        reg_loss = self.sq_sum(augmented_it_items[pos_items]) / self.batch_size
+        cl_loss3 = self.InfoNCE(extended_it_user[users], side_embeds_users[users], self.tau)
+        reg_loss = self.sq_sum(extended_it_items[pos_items]) / self.batch_size
 
-        _, image_item_embeds = torch.split(core_image_embeds, [self.n_users, self.n_items], dim=0)
-        _, text_item_embeds = torch.split(core_text_embeds, [self.n_users, self.n_items], dim=0)
+        _, image_item_embeds = torch.split(explicit_image_embeds, [self.n_users, self.n_items], dim=0)
+        _, text_item_embeds = torch.split(explicit_text_embeds, [self.n_users, self.n_items], dim=0)
 
         pos_image_item_embeds = image_item_embeds[pos_items]
         pos_text_item_embeds = text_item_embeds[pos_items]
         neg_image_item_embeds = image_item_embeds[neg_items]
         neg_text_item_embeds = text_item_embeds[neg_items]
 
-        # - CAL
         imagemodal_loss = self.bpr_loss(u_g_embeddings, pos_image_item_embeds, neg_image_item_embeds)
         textmodal_loss = self.bpr_loss(u_g_embeddings, pos_text_item_embeds, neg_text_item_embeds)
-        cal_loss = imagemodal_loss + textmodal_loss
+        unimodal_loss = imagemodal_loss + textmodal_loss
 
-        # component-3  VID.
-        # align
         align_loss = self.InfoNCE(side_embeds_items[pos_items], content_embeds_items[pos_items], self.tau) + self.InfoNCE(
             side_embeds_users[users], content_embeds_user[users], self.tau)
         # inter
-        inter_loss = self.InfoNCE(u_g_embeddings, content_embeds_items[pos_items], self.tau) + self.InfoNCE(
+        inter_loss2 = self.InfoNCE(u_g_embeddings, content_embeds_items[pos_items], self.tau) + self.InfoNCE(
             u_g_embeddings, side_embeds_items[pos_items], self.tau)
-
-        # re_loss
-        re_loss = 0.0
+            
+        vib_loss = 0.0
         if image_mu is not None and image_logvar is not None:
-            re_loss += self.kl_div(image_mu, image_logvar)
+            vib_loss += self.kl_div(image_mu, image_logvar)
         if text_mu is not None and text_logvar is not None:
-            re_loss += self.kl_div(text_mu, text_logvar)
+            vib_loss += self.kl_div(text_mu, text_logvar)
+
+        mrar_loss = self.cl_loss3 * cl_loss3 + self.uni_loss * unimodal_loss
+        vid_loss = self.align_loss * align_loss + self.inter_loss2 * inter_loss2 + self.vib_alpha * vib_loss
         
-        # vt_loss
-        if image_feats is not None and text_feats is not None:
-            image_feats = image_feats[pos_items]
-            text_feats = text_feats[pos_items]
-
-            vt_loss = self.InfoNCE(image_feats, text_feats, self.tau)
-            vt_loss += self.InfoNCE(text_feats, image_feats, self.tau)
-        else:
-            vt_loss = torch.tensor(0.0, device=self.device)
-
+        base_loss = bpr_loss + self.reg_weight * reg_loss
         
-
-        return bpr_loss + self.align_loss * align_loss + self.inter_loss * inter_loss + self.exp_loss * exp_loss + self.reg_weight * reg_loss + self.cal_loss * cal_loss + self.re_loss * re_loss + self.vt_loss * vt_loss
+        total_loss = base_loss + mrar_loss + vid_loss
+        
+       
+        return total_loss
 
     def full_sort_predict(self, interaction):
         user = interaction[0]
@@ -494,3 +450,4 @@ class DAGVID(GeneralRecommender):
 
         scores = torch.matmul(u_embeddings, restore_item_e.transpose(0, 1))
         return scores
+    
