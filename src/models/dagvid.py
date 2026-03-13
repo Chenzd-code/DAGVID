@@ -22,8 +22,8 @@ class DAGVID(GeneralRecommender):
         self.tau = config['tau']
         self.align_loss = config['align_loss']
         self.inter_loss2 = config['inter_loss2']
-        self.cl_loss3 = config['cl_loss3']
-        self.uni_loss = config['uni_loss']
+        self.cl_loss3 = config['exp_loss']
+        self.uni_loss = config['cal_loss']
         self.n_ui_layers = config['n_ui_layers']
         self.embedding_dim = config['embedding_size']
         self.knn_k = config['knn_k']
@@ -432,7 +432,7 @@ class DAGVID(GeneralRecommender):
         if text_mu is not None and text_logvar is not None:
             vib_loss += self.kl_div(text_mu, text_logvar)
 
-        mrar_loss = self.cl_loss3 * cl_loss3 + self.uni_loss * unimodal_loss
+        mrar_loss = self.exp_loss * cl_loss3 + self.cal_loss * unimodal_loss
         vid_loss = self.align_loss * align_loss + self.inter_loss2 * inter_loss2 + self.vib_alpha * vib_loss
         
         base_loss = bpr_loss + self.reg_weight * reg_loss
